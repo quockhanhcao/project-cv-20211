@@ -1,4 +1,4 @@
-from conv.minivgg import MiniVGGNet
+from googlenet import MiniGoogLeNet
 from keras.datasets import fashion_mnist
 import matplotlib
 matplotlib.use("Agg")
@@ -26,7 +26,7 @@ testY = lb.transform(testY)
 labelNames = ['T-shirt/Top', 'Trouser', 'Pullover', 'Dress', 'Coat', 'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle Boot']
 
 optimization = SGD(learning_rate=0.01, decay=0.01 / 40, momentum=0.9, nesterov=True)
-model = MiniVGGNet.build(width=28, height=28, depth=1, classes=10)
+model = MiniGoogLeNet.build(width=28, height=28, depth=1, classes=10)
 model.compile(loss="categorical_crossentropy", optimizer=optimization, metrics=['accuracy'])
 
 history = model.fit(trainX, trainY, validation_data=(testX, testY),
