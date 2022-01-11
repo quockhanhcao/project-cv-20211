@@ -40,10 +40,12 @@ ap.add_argument("-o", "--output", required = True,
 args = vars(ap.parse_args())
 
 # load the training and testing data, converting the image from integers to floats
-print("[INFO] loading CIFAR-10 data...")
 ((trainX, trainY), (testX, testY)) = fashion_mnist.load_data()
-trainX = trainX.astype("float")
-testX = testX.astype("float")
+trainX = trainX.reshape(trainX.shape[0], 28, 28, 1)
+testX = testX.reshape(testX.shape[0], 28, 28, 1)
+
+trainX = trainX.astype("float")/255.0
+testX = testX.astype("float")/255.0
 
 # apply mean subtraction to the data
 mean = np.mean(trainX, axis = 0)
@@ -72,12 +74,12 @@ callbacks = [TrainingMonitor(figPath, jsonPath = jsonPath),
 # initialize the optimizer and model
 print("[INFO] compiling model...")
 opt = SGD(lr = INIT_LR, momentum = 0.9)
-model = MiniGoogLeNet.build(width = 32, height = 32, depth = 3, classes = 10)
+model = MiniGoogLeNet.build(width = 28, height = 28, depth = 1, classes = 10)
 model.compile(loss = "categorical_crossentropy", optimizer = opt, metrics = ["accuracy"])
 
 # train the network
 print("[INFO] training network...")
-model.fit_generator(aug.flow(trainX, trainY, batch_size = 64),
+model.fit(trainX, trainY, batch_size = 64,
     validation_data = (testX, testY), steps_per_epoch = len(trainX) // 64,
     epochs = NUM_EPOCHS, callbacks = callbacks, verbose = 1)
 

@@ -1,8 +1,8 @@
 # import packages
-from keras.layers.normalization import BatchNormalization
-from keras.layers.convolutional import Conv2D
-from keras.layers.convolutional import MaxPooling2D
-from keras.layers.convolutional import AveragePooling2D
+from keras.layers import BatchNormalization
+from keras.layers import Conv2D
+from keras.layers import MaxPooling2D
+from keras.layers import AveragePooling2D
 from keras.layers.core import Activation
 from keras.layers.core import Dense
 from keras.layers.core import Dropout
@@ -73,7 +73,7 @@ class MiniGoogLeNet:
         # two Inception module followed by global POOL and dropout
         x = MiniGoogLeNet.inception_module(x, 176, 160, chanDim)
         x = MiniGoogLeNet.inception_module(x, 176, 160, chanDim)
-        x = AveragePooling2D((7, 7))(x)
+        x = AveragePooling2D((5, 5))(x)
         x = Dropout(0.5)(x)
 
         # softmax classifier
