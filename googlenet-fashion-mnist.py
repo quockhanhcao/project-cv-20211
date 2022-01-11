@@ -6,7 +6,7 @@ matplotlib.use("Agg")
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import LabelBinarizer
 from pipeline.nn.conv import MiniGoogLeNet
-from pipeline.callbacks import TrainingMonitor
+# from pipeline.callbacks import TrainingMonitor
 from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import LearningRateScheduler
 from tensorflow.keras.optimizers import SGD
@@ -14,7 +14,7 @@ from keras.datasets import fashion_mnist
 import numpy as np
 import argparse
 import os
-
+from matplotlib import pyplot as plt
 # define the total number of epochs to train for along with initial learning rate
 NUM_EPOCHS = 70
 INIT_LR = 5e-3
@@ -68,8 +68,7 @@ aug = ImageDataGenerator(width_shift_range = 0.1, height_shift_range = 0.1,
 # construct the set of callbacks
 figPath = os.path.sep.join([args["output"], "{}.png".format(os.getpid())])
 jsonPath = os.path.sep.join([args["output"], "{}.json".format(os.getpid())])
-callbacks = [TrainingMonitor(figPath, jsonPath = jsonPath),
-    LearningRateScheduler(poly_decay)]
+callbacks = [LearningRateScheduler(poly_decay)]
 
 # initialize the optimizer and model
 print("[INFO] compiling model...")
@@ -79,9 +78,29 @@ model.compile(loss = "categorical_crossentropy", optimizer = opt, metrics = ["ac
 
 # train the network
 print("[INFO] training network...")
-model.fit(trainX, trainY, batch_size = 64,
+history = model.fit(trainX, trainY, batch_size = 64,
     validation_data = (testX, testY), steps_per_epoch = len(trainX) // 64,
-    epochs = NUM_EPOCHS, callbacks = callbacks, verbose = 1)
+    epochs = NUM_EPOCHS, callbacks = callbacks, verbose = 2)
+
+model.save('googlenet-fashion-mnist.h5')
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title("Model Loss")
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend(['Train', 'Test'])
+plt.show()
+plt.savefig('model_loss.png')
+
+
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title("Model Accuracy")
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend(['Train', 'Test'])
+plt.show()
+plt.savefig('model_accuracy.png')
 
 # evaluate network
 print("[INFO] evaluating network...")
