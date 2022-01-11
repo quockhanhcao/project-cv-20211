@@ -1,88 +1,92 @@
+# set the matplotlib backend so figures can be saved in the background
+import matplotlib
+matplotlib.use("Agg")
+
 # import packages
-from tensorflow.keras.layers import BatchNormalization
-from keras.layers.convolutional import Conv2D
-from keras.layers.convolutional import MaxPooling2D
-from keras.layers.convolutional import AveragePooling2D
-from keras.layers.core import Activation
-from keras.layers.core import Dense
-from keras.layers.core import Dropout
-from keras.layers import Flatten
-from keras.layers import Input
-from keras.models import Model
-from keras.layers import concatenate
-from keras import backend as K
+from sklearn.metrics import classification_report
+from sklearn.preprocessing import LabelBinarizer
+from pipeline.nn.conv import MiniGoogLeNet
+from pipeline.callbacks import TrainingMonitor
+from keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import LearningRateScheduler
+from tensorflow.keras.optimizers import SGD
+from keras.datasets import fashion_mnist
+import numpy as np
+import argparse
+import os
 
-class MiniGoogLeNet:
-    @staticmethod
-    def conv_module(x, K, kX, kY, stride, chanDim, padding = "same"):
-        # define a CONV => BN => RELU pattern
-        x = Conv2D(K, (kX, kY), strides = stride, padding = padding)(x)
-        x = BatchNormalization(axis = chanDim)(x)
-        x = Activation("relu")(x)
+# define the total number of epochs to train for along with initial learning rate
+NUM_EPOCHS = 70
+INIT_LR = 5e-3
 
-        # return the block
-        return x
+def poly_decay(epoch):
+    # initialize the maximum number of epochs, base learning rate,
+    # and power of the polynomial
+    maxEpochs = NUM_EPOCHS
+    baseLR = INIT_LR
+    power = 1.0
 
-    @staticmethod
-    def inception_module(x, numK1x1, numK3x3, chanDim):
-        # define two CONV modules, then concatenate across the channel dimension
-        conv_1x1 = MiniGoogLeNet.conv_module(x, numK1x1, 1, 1, (1, 1), chanDim)
-        conv_3x3 = MiniGoogLeNet.conv_module(x, numK3x3, 3, 3, (1, 1), chanDim)
-        x = concatenate([conv_1x1, conv_3x3], axis = chanDim)
+    # compute the new learning rate based on polynomial decay
+    alpha = baseLR * (1 - (epoch / float(maxEpochs))) ** power
 
-        # return the block
-        return x
+    # return the new learning rate
+    return alpha
 
-    @staticmethod
-    def downsample_module(x, K, chanDim):
-        # define the CONV module and POOL, then concatenate across the channel dimensions
-        conv_3x3 = MiniGoogLeNet.conv_module(x, K, 3, 3, (2, 2), chanDim, padding = "valid")
-        pool = MaxPooling2D((3, 3), strides = (2, 2))(x)
-        x = concatenate([conv_3x3, pool], axis = chanDim)
+# construct the argument parser
+ap = argparse.ArgumentParser()
+ap.add_argument("-m", "--model", required = True, help = "path to output model")
+ap.add_argument("-o", "--output", required = True,
+    help = "path to output directory (logs, plots, etc.)")
+args = vars(ap.parse_args())
 
-        # return the block
-        return x
+# load the training and testing data, converting the image from integers to floats
+print("[INFO] loading CIFAR-10 data...")
+((trainX, trainY), (testX, testY)) = fashion_mnist.load_data()
+trainX = trainX.astype("float")
+testX = testX.astype("float")
 
-    @staticmethod
-    def build(width, height, depth, classes):
-        # initialize the input shape to be "channel last" and channels dimension itself
-        inputShape = (height, width, depth)
-        chanDim = -1
+# apply mean subtraction to the data
+mean = np.mean(trainX, axis = 0)
+trainX -= mean
+testX -= mean
 
-        # if we are using "channel first", update the inpute shape and channel dimension
-        if K.image_data_format() == "channels_first":
-            inputShape = (depth, height, width)
-            chanDim = 1
+# convert the labels from integers to vectors
+lb = LabelBinarizer()
+trainY = lb.fit_transform(trainY)
+testY = lb.transform(testY)
 
-        # define the model input and first CONV module
-        inputs = Input(shape = inputShape)
-        x = MiniGoogLeNet.conv_module(inputs, 96, 3, 3, (1, 1), chanDim)
+# initialize the label name for fashion-mnist dataset
+labelNames = ["T-shirt/top", "Trouser", "Pullover", "Dress", "Coat",
+    "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"]
 
-        # two Inception modules followed by a downsample module
-        x = MiniGoogLeNet.inception_module(x, 32, 32, chanDim)
-        x = MiniGoogLeNet.inception_module(x, 32, 48, chanDim)
-        x = MiniGoogLeNet.downsample_module(x, 80, chanDim)
+# construct the image generator for data augmentation
+aug = ImageDataGenerator(width_shift_range = 0.1, height_shift_range = 0.1,
+    horizontal_flip = True, fill_mode = "nearest")
 
-        # four Inception module followed by a downsample module
-        x = MiniGoogLeNet.inception_module(x, 112, 48, chanDim)
-        x = MiniGoogLeNet.inception_module(x, 96, 64, chanDim)
-        x = MiniGoogLeNet.inception_module(x, 80, 80, chanDim)
-        x = MiniGoogLeNet.inception_module(x, 48, 96, chanDim)
-        x = MiniGoogLeNet.downsample_module(x, 96, chanDim)
+# construct the set of callbacks
+figPath = os.path.sep.join([args["output"], "{}.png".format(os.getpid())])
+jsonPath = os.path.sep.join([args["output"], "{}.json".format(os.getpid())])
+callbacks = [TrainingMonitor(figPath, jsonPath = jsonPath),
+    LearningRateScheduler(poly_decay)]
 
-        # two Inception module followed by global POOL and dropout
-        x = MiniGoogLeNet.inception_module(x, 176, 160, chanDim)
-        x = MiniGoogLeNet.inception_module(x, 176, 160, chanDim)
-        x = AveragePooling2D((7, 7))(x)
-        x = Dropout(0.5)(x)
+# initialize the optimizer and model
+print("[INFO] compiling model...")
+opt = SGD(lr = INIT_LR, momentum = 0.9)
+model = MiniGoogLeNet.build(width = 32, height = 32, depth = 3, classes = 10)
+model.compile(loss = "categorical_crossentropy", optimizer = opt, metrics = ["accuracy"])
 
-        # softmax classifier
-        x = Flatten()(x)
-        x = Dense(classes)(x)
-        x = Activation("softmax")(x)
+# train the network
+print("[INFO] training network...")
+model.fit_generator(aug.flow(trainX, trainY, batch_size = 64),
+    validation_data = (testX, testY), steps_per_epoch = len(trainX) // 64,
+    epochs = NUM_EPOCHS, callbacks = callbacks, verbose = 1)
 
-        # create the model
-        model = Model(inputs, x, name = "googlenet")
+# evaluate network
+print("[INFO] evaluating network...")
+predictions = model.predict(testX, batch_size = 64)
+print(classification_report(testY.argmax(axis = 1),
+    predictions.argmax(axis = 1), target_names = labelNames))
 
-        # return the constructed network architecture
-        return model
+# save the network to disk
+print("[INFO] serializing network...")
+model.save(args["model"])
